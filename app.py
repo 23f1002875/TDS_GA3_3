@@ -33,13 +33,12 @@ def home():
 
 @app.post("/extract")
 def extract(data: InvoiceRequest):
+    try:
 
-    prompt = f"""
-Extract the invoice information.
+        prompt = f"""
+Extract invoice fields.
 
 Return ONLY valid JSON.
-
-Schema:
 
 {{
   "invoice_no": null,
@@ -50,59 +49,38 @@ Schema:
   "currency": null
 }}
 
-Rules:
-
-- invoice_no = invoice/reference number
-- date must always be YYYY-MM-DD
-- vendor = seller/company
-- amount = subtotal before tax
-- tax = tax amount only
-- currency = INR/USD/EUR etc.
-- If missing return null.
-- No explanation.
-- No markdown.
-
 Invoice:
 
 {data.invoice_text}
 """
 
-    response = requests.post(
-        "https://aipipe.org/openrouter/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json"
-        },
-        json={
-            "model": "openai/gpt-4.1-nano",
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are an invoice extraction API. Always return valid JSON only."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "temperature": 0
-        },
-        timeout=60
-    )
+        r = requests.post(
+            "https://aipipe.org/openrouter/v1/chat/completions",
+            headers={
+                "Authorization": f"Bearer {API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "model": "openai/gpt-4.1-nano",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": "Return ONLY JSON."
+                    },
+                    {
+                        "role": "user",
+                        "content": prompt
+                    }
+                ],
+                "temperature": 0
+            },
+            timeout=60
+        )
 
-    response.raise_for_status()
+        print(r.status_code)
+        print(r.text)
 
-    result = response.json()
+        return r.json()
 
-    text = result["choices"][0]["message"]["content"]
-
-    data = json.loads(text)
-
-    return {
-        "invoice_no": data.get("invoice_no"),
-        "date": data.get("date"),
-        "vendor": data.get("vendor"),
-        "amount": data.get("amount"),
-        "tax": data.get("tax"),
-        "currency": data.get("currency")
-    }
+    except Exception as e:
+        return {"error": str(e)}
