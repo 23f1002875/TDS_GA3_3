@@ -36,9 +36,11 @@ def extract(data: InvoiceRequest):
     try:
 
         prompt = f"""
-Extract invoice fields.
+Extract the following invoice fields.
 
-Return ONLY valid JSON.
+Return ONLY a valid JSON object.
+
+Schema:
 
 {{
   "invoice_no": null,
@@ -49,38 +51,62 @@ Return ONLY valid JSON.
   "currency": null
 }}
 
+Rules:
+
+- date must always be YYYY-MM-DD
+- amount = subtotal before tax
+- tax = tax amount only
+- currency = INR/USD/EUR/etc.
+- If a field is missing, return null.
+- No markdown.
+- No explanation.
+
 Invoice:
 
 {data.invoice_text}
 """
 
-        r = requests.post(
-            "https://aipipe.org/openrouter/v1/chat/completions",
+        response = requests.post(
+            "https://aipipe.org/geminiv1beta/models/gemini-1.5-flash:generateContent",
             headers={
                 "Authorization": f"Bearer {API_KEY}",
-                "Content-Type": "application/json",
+                "Content-Type": "application/json"
             },
             json={
-                "model": "openai/gpt-4.1-nano",
-                "messages": [
+                "contents": [
                     {
-                        "role": "system",
-                        "content": "Return ONLY JSON."
-                    },
-                    {
-                        "role": "user",
-                        "content": prompt
+                        "parts": [
+                            {
+                                "text": prompt
+                            }
+                        ]
                     }
-                ],
-                "temperature": 0
+                ]
             },
             timeout=60
         )
 
-        print(r.status_code)
-        print(r.text)
+        response.raise_for_status()
 
-        return r.json()
+        result = response.json()
+
+        text = result["candidates"][0]["content"]["parts"][0]["text"]
+
+        # Remove markdown if Gemini returns ```json ... ```
+        text = text.replace("```json", "").replace("```", "").strip()
+
+        data = json.loads(text)
+
+        return {
+            "invoice_no": data.get("invoice_no"),
+            "date": data.get("date"),
+            "vendor": data.get("vendor"),
+            "amount": data.get("amount"),
+            "tax": data.get("tax"),
+            "currency": data.get("currency"),
+        }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "error": str(e)
+        }
